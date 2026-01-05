@@ -60,9 +60,9 @@ public class UserCouponService {
         userCouponDto.ratio(),
         userCouponDto.fixedAmount()
     );
-    userCouponRepository.save(userCoupon);
   }
 
+  @Transactional
   public void delete(Long userCouponId) {
     userCouponRepository.deleteById(userCouponId);
   }

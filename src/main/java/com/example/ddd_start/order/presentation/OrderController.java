@@ -1,5 +1,6 @@
 package com.example.ddd_start.order.presentation;
 
+import com.example.ddd_start.common.domain.exception.NoMemberFoundException;
 import com.example.ddd_start.common.domain.exception.ValidationErrorException;
 import com.example.ddd_start.coupon.Exception.CouponAlreadyUsedException;
 import com.example.ddd_start.order.application.model.ChangeOrderShippingInfoCommand;
@@ -59,14 +60,21 @@ public class OrderController {
       });
 
       throw new RuntimeException(e);
+    } catch (NoMemberFoundException e) {
+      return ResponseEntity.badRequest().body("회원 정보를 찾을 수 없습니다.");
     } catch (CouponAlreadyUsedException e) {
       return ResponseEntity.badRequest().body("이미 사용한 쿠폰입니다.");
     }
   }
 
   @PostMapping("/orders/shipping-info")
-  public void changeShippingInfo(ChangeOrderShippingInfoCommand command) {
-    orderService.changeShippingInfo(command);
+  public ResponseEntity changeShippingInfo(ChangeOrderShippingInfoCommand command) {
+    try {
+      orderService.changeShippingInfo(command);
+      return ResponseEntity.ok("배송 정보가 정상적으로 변경되었습니다.");
+    } catch (NoMemberFoundException e) {
+      return ResponseEntity.badRequest().body("회원 정보를 찾을 수 없습니다.");
+    }
   }
 
   @PutMapping("/orders")

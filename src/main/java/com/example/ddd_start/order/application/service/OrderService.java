@@ -1,6 +1,7 @@
 package com.example.ddd_start.order.application.service;
 
 import com.example.ddd_start.common.domain.error.ValidationError;
+import com.example.ddd_start.common.domain.exception.NoMemberFoundException;
 import com.example.ddd_start.common.domain.exception.NoOrderException;
 import com.example.ddd_start.common.domain.exception.ValidationErrorException;
 import com.example.ddd_start.common.domain.exception.VersionConflictException;
@@ -21,11 +22,13 @@ import com.example.ddd_start.order.domain.dto.OrderLineDto;
 import com.example.ddd_start.order.domain.service.DiscountCalculationService;
 import com.example.ddd_start.order.domain.value.OrderState;
 import com.example.ddd_start.order.domain.value.ShippingInfo;
+import com.example.ddd_start.product.domain.Product;
 import com.example.ddd_start.product.domain.ProductRepository;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.NoSuchElementException;
+import java.util.Map;
 import java.util.Optional;
+import java.util.stream.Collectors;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.context.ApplicationEventPublisher;
@@ -52,7 +55,8 @@ public class OrderService {
   }
 
   @Transactional
-  public void changeShippingInfo(ChangeOrderShippingInfoCommand changeOrderShippingInfoCommand) {
+  public void changeShippingInfo(ChangeOrderShippingInfoCommand changeOrderShippingInfoCommand)
+      throws NoMemberFoundException {
     Optional<Order> optionalOrder = orderRepository.findById(
         changeOrderShippingInfoCommand.getOrderId());
     Order order = optionalOrder.orElseThrow(NoOrderException::new);
@@ -61,47 +65,16 @@ public class OrderService {
 
     if (changeOrderShippingInfoCommand.isUseNewShippingAddressAsMemberAddress()) {
       Optional<Member> optionalMember = memberRepository.findById(order.getOrderer().getMemberId());
-      Member member = optionalMember.orElseThrow(NoSuchElementException::new);
+      Member member = optionalMember.orElseThrow(NoMemberFoundException::new);
       member.changeAddress(newShippingInfo.getAddress());
     }
 
-    order.getOrderEvents().forEach(e -> eventPublisher.publishEvent(e));
-  }
-
-  @Transactional(readOnly = true)
-  public void findOrders() {
-    List<OrderDto> allOrder = orderRepository.search();
-    allOrder.forEach(
-        e -> log.info("id: " + e.getOrderNumber())
-    );
+    order.getOrderEvents().forEach(eventPublisher::publishEvent);
   }
 
   @Transactional
-  public Long placeOrder(PlaceOrderCommand placeOrderCommand) {
-    List<OrderLineDto> orderLineDtos = placeOrderCommand.orderLines();
-    List<OrderLine> orderLines = orderLineDtos.stream()
-        .map(orderLineDto ->
-            new OrderLine(
-                productRepository.findById(orderLineDto.productId())
-                    .orElseThrow(() -> new RuntimeException("Product not found")),
-                orderLineDto.price(),
-                orderLineDto.quantity()
-            )).toList();
-
-    Order order = new Order(
-        orderLines,
-        placeOrderCommand.shippingInfo(),
-        placeOrderCommand.message(),
-        placeOrderCommand.orderer(),
-        placeOrderCommand.paymentInfo()
-    );
-    order = calculatePaymentInfo(order, placeOrderCommand.coupons());
-    orderRepository.save(order);
-    return order.getId();
-  }
-
-  @Transactional
-  public Long placeOrderV2(PlaceOrderCommand command) throws ValidationErrorException {
+  public Long placeOrderV2(PlaceOrderCommand command)
+      throws ValidationErrorException, NoMemberFoundException {
     List<ValidationError> errors = new ArrayList<>();
 
     if (command == null) {
@@ -123,40 +96,46 @@ public class OrderService {
     }
 
     List<OrderLineDto> orderLineDtos = command.orderLines();
-    List<OrderLine> orderLines = orderLineDtos.stream()
-        .map(orderLineDto ->
-            new OrderLine(
-                productRepository.findById(orderLineDto.productId())
-                    .orElseThrow(() -> new RuntimeException("Product not found")),
-                orderLineDto.price(),
-                orderLineDto.quantity()
-            )).toList();
 
-    Order order = calculatePaymentInfo(
-        new Order(
-            orderLines,
-            command.shippingInfo(),
-            command.message(),
-            command.orderer(),
-            command.paymentInfo()
-        ),
-        command.coupons()
+    List<Long> productIds = orderLineDtos.stream()
+        .map(OrderLineDto::productId)
+        .toList();
+    Map<Long, Product> productMap = productRepository.findAllById(productIds)
+        .stream()
+        .collect(Collectors.toMap(Product::getId, p -> p));
+
+    List<OrderLine> orderLines = orderLineDtos.stream()
+        .map(orderLineDto -> {
+          Product product = productMap.get(orderLineDto.productId());
+          if (product == null) {
+            throw new IllegalArgumentException("Product not found: " + orderLineDto.productId());
+          }
+          return new OrderLine(product, orderLineDto.price(), orderLineDto.quantity());
+        })
+        .toList();
+
+    Order order = new Order(
+        orderLines,
+        command.shippingInfo(),
+        command.message(),
+        command.orderer(),
+        command.paymentInfo()
     );
-    Order save = orderRepository.save(order);
-    orderLines.forEach(
-        orderLine -> orderLine.changeOrder(save)
-    );
+    calculatePaymentInfo(order, command.coupons());
+    Order savedOrder = orderRepository.save(order);
+
+    orderLines.forEach(orderLine -> orderLine.changeOrder(savedOrder));
     orderLineRepository.saveAll(orderLines);
-    return order.getId();
+
+    return savedOrder.getId();
   }
 
-  private Order calculatePaymentInfo(Order order, List<UserCouponDto> coupons) {
+  private void calculatePaymentInfo(Order order, List<UserCouponDto> coupons)
+      throws NoMemberFoundException {
     Member member = memberRepository.findById(order.getOrderer().getMemberId())
-        .orElseThrow(NoSuchElementException::new);
+        .orElseThrow(NoMemberFoundException::new);
 
     order.calculateAmounts(discountCalculationService, member.getMemberGrade(), coupons);
-
-    return order;
   }
 
   @Transactional
@@ -171,33 +150,43 @@ public class OrderService {
 
   @Transactional(readOnly = true)
   public List<FindOrderResponse> findMyOrder(Long memberId) {
-    return orderRepository.findOrderByMemberId(memberId)
-        .stream().map(
-            o -> new FindOrderResponse(
-                o.getId(),
-                o.getOrderState(),
-                o.getShippingInfo(),
-                o.getMessage(),
-                o.getTotalAmounts(),
-                o.getOrderer().getName(),
-                o.getCreatedAt(),
-                o.getPaymentInfo(),
-                orderLineRepository.findByOrderId(o.getId())
-            )
-        ).toList();
+    List<Order> orders = orderRepository.findOrderByMemberId(memberId);
+
+    if (orders.isEmpty()) {
+      return List.of();
+    }
+
+    List<Long> orderIds = orders.stream().map(Order::getId).toList();
+    List<OrderLine> allOrderLines = orderLineRepository.findByOrderIdIn(orderIds);
+
+    Map<Long, List<OrderLine>> orderLineMap = allOrderLines.stream()
+        .collect(Collectors.groupingBy(OrderLine::getOrderId));
+
+    return orders.stream()
+        .map(o -> new FindOrderResponse(
+            o.getId(),
+            o.getOrderState(),
+            o.getShippingInfo(),
+            o.getMessage(),
+            o.getTotalAmounts(),
+            o.getOrderer().getName(),
+            o.getCreatedAt(),
+            o.getPaymentInfo(),
+            orderLineMap.getOrDefault(o.getId(), List.of())
+        ))
+        .toList();
   }
 
   @Transactional
   public Long updateOrder(UpdateOrderCommand cmd) {
     Order findOrder = orderRepository.findById(cmd.orderId())
-        .orElseThrow(NoSuchElementException::new);
+        .orElseThrow(NoOrderException::new);
 
     if (findOrder.getOrderState() == OrderState.CANCEL) {
       throw new IllegalStateException("이미 취소된 주문입니다.");
     }
 
     findOrder.changeShippingInfo(cmd.shippingInfo());
-    Order update = orderRepository.save(findOrder);
-    return update.getId();
+    return findOrder.getId();
   }
 }
