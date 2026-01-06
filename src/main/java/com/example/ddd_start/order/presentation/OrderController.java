@@ -14,6 +14,7 @@ import com.example.ddd_start.order.presentation.model.UpdateOrderRequest;
 import java.util.List;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.core.Authentication;
 import org.springframework.validation.BindingResult;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -30,9 +31,13 @@ public class OrderController {
   private final OrderService orderService;
 
   @GetMapping("/orders/my-order")
-  public ResponseEntity findMyOrder(@RequestParam Long memberId) {
-    List<FindOrderResponse> myOrder = orderService.findMyOrder(memberId);
-    return ResponseEntity.ok(myOrder);
+  public ResponseEntity findMyOrder(Authentication authentication) {
+    try {
+      List<FindOrderResponse> myOrder = orderService.findMyOrderByUsername(authentication.getName());
+      return ResponseEntity.ok(myOrder);
+    } catch (NoMemberFoundException e) {
+      return ResponseEntity.badRequest().body("회원 정보를 찾을 수 없습니다.");
+    }
   }
 
   @PostMapping("/orders/place-order")

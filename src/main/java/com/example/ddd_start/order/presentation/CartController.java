@@ -1,7 +1,6 @@
 package com.example.ddd_start.order.presentation;
 
 import com.example.ddd_start.order.application.model.CartDto;
-import com.example.ddd_start.order.application.model.CreateCartCommand;
 import com.example.ddd_start.order.application.service.CartService;
 import com.example.ddd_start.order.application.service.UpdateCartCommand;
 import com.example.ddd_start.order.presentation.model.AddCartRequest;
@@ -12,6 +11,7 @@ import java.util.List;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -27,19 +27,19 @@ public class CartController {
   private final CartService cartService;
 
   @GetMapping("/carts")
-  public ResponseEntity<List<CartDto>> printAllCarts(@RequestParam Long memberId) {
-    List<CartDto> cartDtos = cartService.printAllCarts(memberId);
-    return ResponseEntity
-        .ok().body(cartDtos);
+  public ResponseEntity<List<CartDto>> printAllCarts(Authentication authentication) {
+    List<CartDto> cartDtos = cartService.printAllCartsByUsername(authentication.getName());
+    return ResponseEntity.ok().body(cartDtos);
   }
 
   @PostMapping("/carts")
-  public ResponseEntity addCart(@RequestBody AddCartRequest req) {
-    Long save = cartService.save(
-        new CreateCartCommand(req.memberId(), req.productId(), req.quantity()));
-
-    return ResponseEntity
-        .ok(new AddCartResponse(save, "장바구니에 정상적으로 추가되었습니다."));
+  public ResponseEntity addCart(@RequestBody AddCartRequest req, Authentication authentication) {
+    Long cartId = cartService.saveByUsername(
+        authentication.getName(),
+        req.productId(),
+        req.quantity()
+    );
+    return ResponseEntity.ok(new AddCartResponse(cartId, "장바구니에 정상적으로 추가되었습니다."));
   }
 
   @PutMapping("/carts")
@@ -61,11 +61,9 @@ public class CartController {
   }
 
   @DeleteMapping("/carts-all")
-  public ResponseEntity deleteAllCarts(@RequestParam Long memberId) {
-    cartService.deleteAll(memberId);
-
-    String message = "정상적으로 삭제되었습니다.";
-    return new ResponseEntity(message, HttpStatus.ACCEPTED);
+  public ResponseEntity deleteAllCarts(Authentication authentication) {
+    cartService.deleteAllByUsername(authentication.getName());
+    return new ResponseEntity("정상적으로 삭제되었습니다.", HttpStatus.ACCEPTED);
   }
 
 }

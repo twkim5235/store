@@ -5,6 +5,10 @@ server:
 spring:
   config:
     import: optional:file:.env[.properties]
+  jackson:
+    serialization:
+      write-dates-as-timestamps: false
+    time-zone: Asia/Seoul
   jpa:
     database: mysql
     show-sql: true
@@ -17,6 +21,12 @@ spring:
     driver-class-name: com.mysql.cj.jdbc.Driver
     hikari:
       maximum-pool-size:  101
+  thymeleaf:
+    prefix: classpath:/templates/
+    suffix: .html
+    mode: HTML
+    encoding: UTF-8
+    cache: false
 password:
   secretKey: TaeWooTaeWooSecretKey
 jwt:

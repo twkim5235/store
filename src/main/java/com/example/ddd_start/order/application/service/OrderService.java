@@ -17,7 +17,6 @@ import com.example.ddd_start.order.domain.Order;
 import com.example.ddd_start.order.domain.OrderLine;
 import com.example.ddd_start.order.domain.OrderLineRepository;
 import com.example.ddd_start.order.domain.OrderRepository;
-import com.example.ddd_start.order.domain.dto.OrderDto;
 import com.example.ddd_start.order.domain.dto.OrderLineDto;
 import com.example.ddd_start.order.domain.service.DiscountCalculationService;
 import com.example.ddd_start.order.domain.value.OrderState;
@@ -96,7 +95,6 @@ public class OrderService {
     }
 
     List<OrderLineDto> orderLineDtos = command.orderLines();
-
     List<Long> productIds = orderLineDtos.stream()
         .map(OrderLineDto::productId)
         .toList();
@@ -175,6 +173,14 @@ public class OrderService {
             orderLineMap.getOrDefault(o.getId(), List.of())
         ))
         .toList();
+  }
+
+  @Transactional(readOnly = true)
+  public List<FindOrderResponse> findMyOrderByUsername(String username)
+      throws NoMemberFoundException {
+    Member member = memberRepository.findMemberByUsername(username)
+        .orElseThrow(NoMemberFoundException::new);
+    return findMyOrder(member.getId());
   }
 
   @Transactional

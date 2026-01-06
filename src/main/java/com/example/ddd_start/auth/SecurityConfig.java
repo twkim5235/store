@@ -30,10 +30,18 @@ public class SecurityConfig {
         .authorizeHttpRequests(
             auth -> auth
                 .requestMatchers(
+                    new AntPathRequestMatcher("/"),
+                    new AntPathRequestMatcher("/login"),
+                    new AntPathRequestMatcher("/signup"),
+                    new AntPathRequestMatcher("/shop"),
+                    new AntPathRequestMatcher("/shop/**"),
+                    new AntPathRequestMatcher("/cart"),
+                    new AntPathRequestMatcher("/my-orders"),
+                    new AntPathRequestMatcher("/checkout"),
                     new AntPathRequestMatcher("/members/join"),
                     new AntPathRequestMatcher("/members/sign-in"),
                     new AntPathRequestMatcher("/products"),
-                    new AntPathRequestMatcher("/products/{productId}"),
+                    new AntPathRequestMatcher("/products/**"),
                     new AntPathRequestMatcher("/swagger-ui.html"),
                     new AntPathRequestMatcher("/v3/api-docs/**"),
                     new AntPathRequestMatcher("/swagger-ui/**"),
