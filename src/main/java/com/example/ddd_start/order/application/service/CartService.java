@@ -47,17 +47,32 @@ public class CartService {
     return save.getId();
   }
 
+  @Transactional
+  public Long saveByUsername(String username, Long productId, Integer quantity) {
+    Member member = memberRepository.findMemberByUsername(username)
+        .orElseThrow(() -> new IllegalArgumentException("회원 정보를 찾을 수 없습니다."));
+    return save(new CreateCartCommand(member.getId(), productId, quantity));
+  }
+
   @Transactional(readOnly = true)
   public List<CartDto> printAllCarts(Long memberId) {
     return cartRepository.findByMemberId(memberId).stream()
         .map(cart -> new CartDto(
             cart.getId(),
+            cart.getProduct().getId(),
             cart.getProduct().getTitle(),
             cart.getProduct().getPrice(),
             cart.getProduct().getImages().get(0),
             cart.getQuantity()
         ))
         .toList();
+  }
+
+  @Transactional(readOnly = true)
+  public List<CartDto> printAllCartsByUsername(String username) {
+    Member member = memberRepository.findMemberByUsername(username)
+        .orElseThrow(() -> new IllegalArgumentException("회원 정보를 찾을 수 없습니다."));
+    return printAllCarts(member.getId());
   }
 
   @Transactional
@@ -70,6 +85,7 @@ public class CartService {
     cartRepository.save(cart);
     return new CartDto(
         cart.getId(),
+        cart.getProduct().getId(),
         cart.getProduct().getTitle(),
         cart.getProduct().getPrice(),
         cart.getProduct().getImages().get(0),
@@ -85,6 +101,13 @@ public class CartService {
   @Transactional
   public void deleteAll(Long memberId) {
     cartRepository.deleteByMemberId(memberId);
+  }
+
+  @Transactional
+  public void deleteAllByUsername(String username) {
+    Member member = memberRepository.findMemberByUsername(username)
+        .orElseThrow(() -> new IllegalArgumentException("회원 정보를 찾을 수 없습니다."));
+    deleteAll(member.getId());
   }
 
 }
